@@ -87,3 +87,4 @@ The codebase is organized into several key modules:
 - **MyPy** type checking
 - **Pylint** with Google Python Style Guide adaptations
 - All configuration centralized in `pyproject.toml`
+- Always exclude Claude instruction files from GitHub commits
