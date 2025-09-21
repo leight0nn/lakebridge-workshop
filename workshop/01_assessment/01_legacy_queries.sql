@@ -33,6 +33,8 @@ WITH regional_performance AS (
     INNER JOIN lineitem l ON ps.ps_partkey = l.l_partkey AND ps.ps_suppkey = l.l_suppkey
     INNER JOIN orders o ON l.l_orderkey = o.o_orderkey
     WHERE o.o_orderdate >= '2023-01-01'
+
+    
         AND l.l_shipdate IS NOT NULL
     GROUP BY r.r_name, n.n_name, s.s_name
 ),
