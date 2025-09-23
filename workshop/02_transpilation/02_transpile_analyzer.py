@@ -43,6 +43,10 @@ import logging
 from typing import List, Dict, Tuple, Optional
 import json
 
+# Add workshop core to path for adapter import
+sys.path.append(str(Path(__file__).parent.parent / 'core'))
+from lakebridge_adapter import LakebridgeAdapter, get_adapter
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +57,7 @@ logger = logging.getLogger(__name__)
 class TranspilationAnalyzer:
     """
     Wrapper class for Lakebridge Transpiler functionality focused on
-    Module 1's identified simple and medium complexity files
+    Module 1's identified simple and medium complexity files with resilient adapter integration
     """
 
     # Files to transpile (from Module 1 assessment)
@@ -137,6 +141,10 @@ class TranspilationAnalyzer:
         self.target_files = self.FOCUS_FILES.copy()
         if include_advanced:
             self.target_files.update(self.ADVANCED_FILES)
+        
+        # Initialize Lakebridge adapter
+        self.adapter = get_adapter()
+        logger.info(f"Transpilation initialized with adapter mode: {'Native' if self.adapter.lakebridge_available else 'Fallback'}")
 
     def validate_dependencies(self) -> bool:
         """
@@ -199,44 +207,38 @@ class TranspilationAnalyzer:
 
     def transpile_with_lakebridge(self, filename: str) -> Tuple[bool, str, str]:
         """
-        Attempt to transpile a single file using Lakebridge
+        Attempt to transpile a single file using resilient adapter
         Returns: (success, transpiled_content, error_message)
         """
         source_path = self.source_directory / filename
         output_path = self.output_directory / filename.replace('.sql', '_databricks.sql')
 
         try:
-            # Use Lakebridge CLI to transpile
-            cmd = [
-                "databricks", "labs", "lakebridge", "transpile",
-                "--source-dialect", "tsql",
-                "--input-source", str(source_path),
-                "--output-folder", str(self.output_directory),
-                "--skip-validation", "true"  # Skip validation for demo purposes
-            ]
+            logger.info(f"🔄 Transpiling {filename} with adapter (mode: {'Native' if self.adapter.lakebridge_available else 'Fallback'})...")
+            
+            # Use adapter for transpilation
+            result = self.adapter.transpile_sql(
+                source_file=str(source_path),
+                source_dialect='tsql',
+                target_dialect='databricks',
+                output_file=str(output_path)
+            )
 
-            logger.info(f"🔄 Transpiling {filename} with Lakebridge...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-            if result.returncode == 0:
-                # Read the transpiled output
-                if output_path.exists():
-                    with open(output_path, 'r') as f:
-                        transpiled_content = f.read()
-                    logger.info(f"✅ Successfully transpiled {filename}")
-                    return True, transpiled_content, ""
-                else:
-                    logger.warning(f"⚠️ Transpilation completed but output file not found: {filename}")
-                    return False, "", "Output file not generated"
+            if result.get('success', False):
+                transpiled_content = result.get('transpiled_sql', '')
+                
+                # Ensure output file exists
+                if not output_path.exists() and transpiled_content:
+                    with open(output_path, 'w') as f:
+                        f.write(transpiled_content)
+                
+                logger.info(f"✅ Successfully transpiled {filename} using {result.get('method', 'unknown')} method")
+                return True, transpiled_content, ""
             else:
-                error_msg = result.stderr or result.stdout or "Unknown transpilation error"
+                error_msg = result.get('error', 'Unknown transpilation error')
                 logger.error(f"❌ Transpilation failed for {filename}: {error_msg}")
                 return False, "", error_msg
 
-        except subprocess.TimeoutExpired:
-            error_msg = "Transpilation timeout"
-            logger.error(f"❌ Timeout transpiling {filename}")
-            return False, "", error_msg
         except Exception as e:
             error_msg = str(e)
             logger.error(f"❌ Error transpiling {filename}: {error_msg}")

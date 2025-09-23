@@ -41,6 +41,10 @@ import pandas as pd
 import sqlalchemy
 from databricks import sql as databricks_sql
 
+# Add workshop core to path for adapter import
+sys.path.append(str(Path(__file__).parent.parent / 'core'))
+from lakebridge_adapter import LakebridgeAdapter, get_adapter
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -76,7 +80,10 @@ class ReconciliationAnalyzer:
         self.validation_results = {}
         self.start_time = datetime.now(timezone.utc)
         
+        # Initialize Lakebridge adapter
+        self.adapter = get_adapter()
+        
         # Initialize connections based on mode
         self._initialize_connections()
         
-        logger.info(f"ReconciliationAnalyzer initialized in {mode} mode")
+        logger.info(f"ReconciliationAnalyzer initialized in {mode} mode with adapter: {'Native' if self.adapter.lakebridge_available else 'Fallback'}")

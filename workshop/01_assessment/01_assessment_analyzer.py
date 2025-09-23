@@ -37,6 +37,10 @@ import pandas as pd
 import json
 from typing import Dict, List, Optional, Union
 
+# Add workshop core to path for adapter import
+sys.path.append(str(Path(__file__).parent.parent / 'core'))
+from lakebridge_adapter import LakebridgeAdapter, get_adapter
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -46,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 class LakebridgeAssessment:
     """
-    Wrapper class for Lakebridge Analyzer functionality
+    Wrapper class for Lakebridge Analyzer functionality with resilient adapter integration
     """
 
     def __init__(self, source_directory: str = None, report_name: str = None, generate_samples: bool = False):
@@ -59,6 +63,10 @@ class LakebridgeAssessment:
             'supplier_risk_assessment.sql', 'dynamic_reporting.sql', 'window_functions_analysis.sql',
             'financial_summary.sql', 'order_processing.sql'
         ]
+        
+        # Initialize Lakebridge adapter
+        self.adapter = get_adapter()
+        logger.info(f"Assessment initialized with adapter mode: {'Native' if self.adapter.lakebridge_available else 'Fallback'}")
 
     def validate_dependencies(self) -> bool:
         """
@@ -375,37 +383,92 @@ class LakebridgeAssessment:
 
     def run_assessment(self) -> bool:
         """
-        Execute the Lakebridge Analyzer assessment
+        Execute the Lakebridge Analyzer assessment using resilient adapter
         """
         try:
-            # Prepare the analyzer command
-            cmd = [
-                "databricks", "labs", "lakebridge", "analyze",
-                "--source-directory", str(self.source_directory.absolute()),
-                "--report-file", self.report_name,
-                "--source-tech", "mssql"  # SQL Server/Synapse
-            ]
-
             logger.info("🚀 Starting Lakebridge assessment...")
             logger.info(f"   Source Directory: {self.source_directory}")
             logger.info(f"   Report Name: {self.report_name}")
             logger.info(f"   Source Technology: MS SQL Server")
+            logger.info(f"   Mode: {'Native Lakebridge' if self.adapter.lakebridge_available else 'Fallback Simulation'}")
 
-            # Execute the assessment
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Use adapter for assessment
+            output_file = f"{self.report_name}.json"  # Use JSON for consistent processing
+            result = self.adapter.analyze_legacy_sql(
+                source_directory=str(self.source_directory.absolute()),
+                output_file=output_file,
+                source_tech="mssql"
+            )
 
-            if result.returncode == 0:
+            if result.get('success', False):
                 logger.info("✅ Assessment completed successfully!")
-                logger.info(f"📊 Report generated: {self.report_name}.xlsx")
+                logger.info(f"📊 Report generated: {output_file}")
+                
+                # Generate Excel report from JSON results
+                self._generate_excel_report(result, f"{self.report_name}.xlsx")
+                logger.info(f"📈 Excel report: {self.report_name}.xlsx")
+                
                 return True
             else:
                 logger.error("❌ Assessment failed:")
-                logger.error(f"   Error: {result.stderr}")
+                logger.error(f"   Error: {result.get('error', 'Unknown error')}")
+                logger.info("💡 Consider using fallback mode for workshop purposes")
                 return False
 
         except Exception as e:
             logger.error(f"❌ Error during assessment: {e}")
             return False
+    
+    def _generate_excel_report(self, assessment_result: Dict, excel_file: str):
+        """Generate Excel report from assessment results."""
+        try:
+            # Create summary data for Excel
+            if 'file_analysis' in assessment_result:
+                file_data = []
+                for filename, analysis in assessment_result['file_analysis'].items():
+                    if isinstance(analysis, dict) and 'complexity_score' in analysis:
+                        file_data.append({
+                            'File': filename,
+                            'Complexity': analysis.get('complexity_score', 0),
+                            'Lines': analysis.get('line_count', 0),
+                            'Migration Wave': analysis.get('migration_wave', 1),
+                            'Estimated Hours': analysis.get('estimated_effort_hours', 0),
+                            'Risk Factors': ', '.join(analysis.get('risk_factors', []))
+                        })
+                
+                if file_data:
+                    df = pd.DataFrame(file_data)
+                    
+                    # Create Excel file with multiple sheets
+                    with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='File Analysis', index=False)
+                        
+                        # Summary sheet
+                        summary_data = assessment_result.get('summary_statistics', {})
+                        summary_df = pd.DataFrame([summary_data])
+                        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                        
+                        # Migration waves
+                        waves = assessment_result.get('migration_recommendations', {})
+                        for wave_name, files in waves.items():
+                            if files:
+                                wave_df = pd.DataFrame({'Files': files})
+                                sheet_name = wave_name.replace('_', ' ').title()[:31]  # Excel sheet name limit
+                                wave_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    
+                    logger.info(f"Excel report generated successfully: {excel_file}")
+                else:
+                    logger.warning("No file analysis data available for Excel report")
+            else:
+                logger.warning("Assessment result missing file_analysis data")
+                
+        except Exception as e:
+            logger.warning(f"Could not generate Excel report: {e}")
+            # Create a simple fallback Excel file
+            try:
+                pd.DataFrame({'Status': ['Assessment completed in fallback mode']}).to_excel(excel_file, index=False)
+            except:
+                pass
 
     def summarize_findings(self):
         """
