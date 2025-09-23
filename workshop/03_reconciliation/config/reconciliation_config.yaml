@@ -1,0 +1,109 @@
+# GlobalSupply Corp - Reconciliation Configuration (Production)
+# This configuration is set up for simulated mode by default
+
+# Source system configuration (Simulated SQLite for workshop)
+source:
+  type: "sqlite"
+  connection:
+    database: "./mock_data/source_data.db"
+  
+  # Tables to validate (TPC-H style schema)
+  tables:
+    - schema: "main"
+      name: "customers"
+      primary_key: "c_custkey"
+      row_count_threshold: 100000
+    
+    - schema: "main" 
+      name: "orders"
+      primary_key: "o_orderkey"
+      row_count_threshold: 500000
+    
+    - schema: "main"
+      name: "lineitem" 
+      primary_key: ["l_orderkey", "l_linenumber"]
+      row_count_threshold: 2000000
+    
+    - schema: "main"
+      name: "suppliers"
+      primary_key: "s_suppkey"
+      row_count_threshold: 10000
+
+# Target system configuration (Databricks)
+target:
+  type: "databricks"
+  connection:
+    server_hostname: "${DATABRICKS_SERVER_HOSTNAME}"
+    http_path: "${DATABRICKS_HTTP_PATH}"
+    access_token: "${DATABRICKS_TOKEN}"
+  
+  # Unity Catalog configuration
+  catalog: "globalsupply_bronze"
+  schema: "raw_data"
+  
+  # Target table mappings
+  tables:
+    - name: "customers"
+      full_name: "globalsupply_bronze.raw_data.customers"
+    
+    - name: "orders"
+      full_name: "globalsupply_bronze.raw_data.orders"
+    
+    - name: "lineitem"
+      full_name: "globalsupply_bronze.raw_data.lineitem"
+    
+    - name: "suppliers"
+      full_name: "globalsupply_bronze.raw_data.suppliers"
+
+# Reconciliation validation rules
+validation:
+  # Row count validation
+  row_count:
+    enabled: true
+    tolerance_percent: 0.1
+    fail_on_mismatch: true
+  
+  # Schema validation
+  schema:
+    enabled: true
+    check_column_names: true
+    check_data_types: true
+    ignore_case: true
+    fail_on_mismatch: false
+  
+  # Data sampling validation
+  data_sampling:
+    enabled: true
+    sample_percent: 10.0  # Higher sampling for workshop
+    random_seed: 42
+    fail_on_mismatch: false
+  
+  # Aggregate validation
+  aggregates:
+    enabled: true
+    functions: ["sum", "count", "avg", "min", "max"]
+    numeric_columns: true
+    tolerance_percent: 0.01
+
+# Reporting configuration
+reporting:
+  output_directory: "./reports"
+  formats: ["html", "json"]
+  include_sample_data: true
+  executive_summary: true
+  
+  company_name: "GlobalSupply Corp"
+  migration_phase: "Module 3 - Data Reconciliation"
+  report_author: "Workshop Participant"
+
+# Performance settings (optimized for workshop)
+performance:
+  batch_size: 5000
+  max_workers: 2
+  timeout_seconds: 1800
+  
+# Logging configuration
+logging:
+  level: "INFO"
+  log_to_file: true
+  log_file: "./reports/reconciliation.log"

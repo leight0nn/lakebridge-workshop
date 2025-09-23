@@ -1,0 +1,116 @@
+# GlobalSupply Corp - Reconciliation Configuration Template
+# Copy this file to reconciliation_config.yaml and customize for your environment
+
+# Source system configuration (SQL Server)
+source:
+  type: "sqlserver"
+  connection:
+    host: "your-sqlserver-host.company.com"
+    port: 1433
+    database: "GlobalSupplyDW"
+    username: "${SQL_SERVER_USER}"  # Use environment variables for credentials
+    password: "${SQL_SERVER_PASSWORD}"
+    driver: "ODBC Driver 17 for SQL Server"
+    trust_server_certificate: true
+  
+  # Tables to validate (from Module 1 assessment)
+  tables:
+    - schema: "dbo"
+      name: "customers"
+      primary_key: "c_custkey"
+      row_count_threshold: 1000000  # Expected approximate row count
+    
+    - schema: "dbo" 
+      name: "orders"
+      primary_key: "o_orderkey"
+      row_count_threshold: 5000000
+    
+    - schema: "dbo"
+      name: "lineitem" 
+      primary_key: ["l_orderkey", "l_linenumber"]
+      row_count_threshold: 20000000
+    
+    - schema: "dbo"
+      name: "suppliers"
+      primary_key: "s_suppkey"
+      row_count_threshold: 100000
+
+# Target system configuration (Databricks)
+target:
+  type: "databricks"
+  connection:
+    server_hostname: "${DATABRICKS_SERVER_HOSTNAME}"
+    http_path: "${DATABRICKS_HTTP_PATH}"
+    access_token: "${DATABRICKS_TOKEN}"
+  
+  # Unity Catalog configuration
+  catalog: "globalsupply_bronze"
+  schema: "raw_data"
+  
+  # Target table mappings
+  tables:
+    - name: "customers"
+      full_name: "globalsupply_bronze.raw_data.customers"
+    
+    - name: "orders"
+      full_name: "globalsupply_bronze.raw_data.orders"
+    
+    - name: "lineitem"
+      full_name: "globalsupply_bronze.raw_data.lineitem"
+    
+    - name: "suppliers"
+      full_name: "globalsupply_bronze.raw_data.suppliers"
+
+# Reconciliation validation rules
+validation:
+  # Row count validation
+  row_count:
+    enabled: true
+    tolerance_percent: 0.1  # Allow 0.1% variance
+    fail_on_mismatch: true
+  
+  # Schema validation
+  schema:
+    enabled: true
+    check_column_names: true
+    check_data_types: true
+    ignore_case: true
+    fail_on_mismatch: false  # Log warnings but continue
+  
+  # Data sampling validation
+  data_sampling:
+    enabled: true
+    sample_percent: 5.0  # Sample 5% of rows for detailed comparison
+    random_seed: 42
+    fail_on_mismatch: false
+  
+  # Aggregate validation
+  aggregates:
+    enabled: true
+    functions: ["sum", "count", "avg", "min", "max"]
+    numeric_columns: true
+    tolerance_percent: 0.01  # Very strict for financial data
+
+# Reporting configuration
+reporting:
+  output_directory: "./reports"
+  formats: ["html", "json", "excel"]
+  include_sample_data: true
+  executive_summary: true
+  
+  # Report customization
+  company_name: "GlobalSupply Corp"
+  migration_phase: "Module 3 - Data Reconciliation"
+  report_author: "Data Engineering Team"
+
+# Performance and operational settings
+performance:
+  batch_size: 10000
+  max_workers: 4
+  timeout_seconds: 3600
+  
+# Logging configuration
+logging:
+  level: "INFO"
+  log_to_file: true
+  log_file: "./reports/reconciliation.log"
