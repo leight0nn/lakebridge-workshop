@@ -88,3 +88,6 @@ The codebase is organized into several key modules:
 - **Pylint** with Google Python Style Guide adaptations
 - All configuration centralized in `pyproject.toml`
 - Always exclude Claude instruction files from GitHub commits
+
+## Development Memories
+- Ensure that the workshop works without the Lakebridge installed and configured for simulation purposes
